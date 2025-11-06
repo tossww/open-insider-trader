@@ -1,92 +1,157 @@
-# PRD - Open-Insider-Trader
+# PRD - Open InsiderTrader
 
 **Last Updated:** 2025-11-06
-**Status:** Milestone [X] of [Y]
+**Status:** Milestone 0 - Project Initialization
 
 ---
 
 ## Vision
 
-Open Insider Trader project
+Validate and capitalize on insider trading signals by identifying high-conviction C-level executive stock purchases. Use 5 years of backtesting to prove the hypothesis, then build real-time monitoring for actionable trade alerts.
 
-**Target Users:** [Who is this for?]
+**Target Users:** Individual retail traders seeking data-driven stock purchase signals
 
 ---
 
 ## Features
 
-### Core Features (Must Build)
+### Phase 1: Validation & Backtesting (Core - Must Build)
 
-- [ ] **[Feature 1]:** [One-line description of what it does]
-- [ ] **[Feature 2]:** [One-line description of what it does]
-- [ ] **[Feature 3]:** [One-line description of what it does]
-- [ ] **[Feature 4]:** [One-line description of what it does]
+- [ ] **Data Collection:** Scrape 5 years of SEC Form 4 insider trading data + market cap data
+- [ ] **Signal Detection:** Filter for C-level executives, $100K+ purchases, clustered buys (multiple executives within days), trade-to-market-cap ratio
+- [ ] **Backtesting Engine:** Calculate performance across multiple time horizons (1d, 3d, 7d, 1mo, 6mo, 1yr, 3yr)
+- [ ] **Benchmark Comparison:** Compare returns vs S&P 500 with transaction costs
+- [ ] **Interactive Dashboard:** Web interface with performance tables, interactive charts (Plotly)
+- [ ] **AI Analysis:** Sonnet-powered analysis of backtesting results with buy/no-buy recommendations
 
-### Future Features (Nice-to-Have)
+### Phase 2: Live Monitoring (Future)
 
-- **[Feature A]:** [Description]
-- **[Feature B]:** [Description]
+- **Real-time Scraping:** Monitor openinsider.com for new trades matching criteria
+- **Discord Alerts:** Notify when high-conviction signals appear
+- **Historical Context:** Show past performance of similar trades for same company/executives
+- **Decision Support:** Interactive charts and AI analysis to support buy decisions
+- **Trade Execution:** (Long-term) Automated trading integration
 
-### Not Building (Out of Scope)
+### Not Building (Out of Scope for Phase 1)
 
-- **[Thing 1]:**
-- **[Thing 2]:**
+- Real-time monitoring (Phase 2)
+- Portfolio management features
+- Social/community features
+- Mobile apps
 
 ---
 
 ## Tech Stack
 
-**Frontend:**
-- [Framework/Language] - e.g., "React + TypeScript"
+**Language:** Python 3.11+
 
-**Backend:**
-- [Framework/Language] - e.g., "Node.js + Express"
+**Data Pipeline:**
+- SEC EDGAR API (official Form 4 data source, free)
+- Pandas, NumPy for data processing
+- SQLite (development) → PostgreSQL (production)
 
-**Database:**
-- [Type] - e.g., "PostgreSQL"
+**Backtesting:**
+- VectorBT (array-based, 1000x faster than alternatives)
+- Backtrader (validation if needed)
+
+**Web Dashboard:**
+- Plotly Dash (Python-native, financial charts)
+- FastAPI (API backend)
+- Option: Next.js + Plotly.js if React preferred
+
+**AI Integration:**
+- Anthropic Claude API (Sonnet 4.5) for analysis and recommendations
 
 **Deployment:**
-- [Platform] - e.g., "Vercel"
-
-**Other:**
-- [Key libraries/services]
-
-*(Update this as tech decisions are made - this is a living section)*
+- Vercel/Netlify (frontend) or Render/Railway (full-stack Python)
 
 ---
 
 ## Milestones
 
-### Milestone 1: [Name]
+### Milestone 0: Project Setup ✅ IN PROGRESS
 
-**Goal:** [What we're achieving in this milestone]
+**Goal:** Initialize project structure, research validation, technical foundation
 
-**Features:**
-- Feature 1: ⏳ In Progress
-- Feature 2: [ ] Not Started
+**Tasks:**
+- [x] Research insider trading signal validity
+- [x] Design technical architecture
+- [ ] Create GitHub repository
+- [ ] Set up Python environment and dependencies
+- [ ] Create project folder structure
 
 **Status:** In Progress
 
 ---
 
-### Milestone 2: [Name]
+### Milestone 1: Data Collection Pipeline
 
-**Goal:** [What we're achieving]
+**Goal:** Collect and process 5 years of SEC Form 4 insider trading data
 
 **Features:**
-- Feature 3: [ ] Not Started
-- Feature 4: [ ] Not Started
+- SEC EDGAR API integration
+- Form 4 parser (handle amendments, derivative securities)
+- Market cap data integration (at time of trade)
+- Data cleaning and validation
+- SQLite database schema
+- C-level executive filter (CEO, CFO, President, Chairman, VP)
+- Transaction size filter ($100K+ absolute threshold)
+- Trade-to-market-cap ratio calculation and filtering
+- Cluster detection (2+ executives buying within 7 days)
+- Signal scoring system (weighted by market cap percentage)
+
+**Success Criteria:**
+- [ ] Successfully parse 5 years of Form 4 filings
+- [ ] Database contains >100K insider trades
+- [ ] Filtering logic accurately identifies high-conviction signals
+- [ ] Data quality validation tests pass
 
 **Status:** Not Started
 
 ---
 
-### Milestone 3: [Name]
+### Milestone 2: Backtesting Engine
 
-**Goal:** [What we're achieving]
+**Goal:** Build and validate backtesting system with realistic assumptions
 
 **Features:**
-- Feature 5: [ ] Not Started
+- Historical stock price integration (Yahoo Finance or similar)
+- VectorBT backtesting implementation
+- Multiple holding period analysis (1d, 3d, 5d, 2wk, 1mo, 6mo, 1yr, max)
+- Transaction cost modeling (0.6% round-trip: 0.2% commission + 0.1% slippage per side)
+- S&P 500 benchmark comparison
+- Risk metrics (Sharpe ratio, max drawdown, win rate, Calmar ratio)
+- Walk-forward validation to prevent overfitting
+
+**Success Criteria:**
+- [ ] Backtesting completes on 5 years of data
+- [ ] Results show statistically significant alpha vs S&P 500
+- [ ] Walk-forward validation confirms robustness
+- [ ] Transaction costs properly account for retail trader reality
+
+**Status:** Not Started
+
+---
+
+### Milestone 3: Interactive Dashboard
+
+**Goal:** Create web dashboard to visualize results and support buy decisions
+
+**Features:**
+- Performance summary tables (returns by time horizon)
+- Interactive Plotly charts (equity curves, returns distribution, drawdown)
+- Individual trade drill-down
+- S&P 500 overlay comparison
+- Risk-adjusted metrics display
+- Parameter sensitivity analysis
+- AI Analysis Panel: Sonnet reviews all metrics and provides recommendation
+
+**Success Criteria:**
+- [ ] Dashboard loads in <2 seconds
+- [ ] All charts interactive (zoom, pan, hover tooltips)
+- [ ] AI analysis generates actionable buy/no-buy recommendation
+- [ ] Responsive design (works on mobile)
+- [ ] Deployed and accessible via URL
 
 **Status:** Not Started
 
@@ -94,54 +159,94 @@ Open Insider Trader project
 
 ## Success Criteria
 
-**We're done when:**
-- [ ] User can [core action 1]
-- [ ] User can [core action 2]
-- [ ] System can [core capability 3]
-- [ ] [Performance target] - e.g., "Page loads in <2s"
-- [ ] [Quality target] - e.g., "All tests pass"
+**Phase 1 is complete when:**
+- [ ] 5 years of insider trading data successfully collected and processed
+- [ ] Backtesting engine validates hypothesis with statistically significant results
+- [ ] Interactive dashboard displays performance metrics clearly
+- [ ] AI analysis provides consistent, rational buy/no-buy recommendations
+- [ ] Results demonstrate positive alpha vs S&P 500 after transaction costs
+- [ ] Documentation allows Boss to understand methodology and results
 
 ---
 
 ## Guidelines
 
 **Important Constraints:**
-- [Constraint 1] - e.g., "Must work offline"
-- [Constraint 2] - e.g., "No user data stored on server"
+- Must use filing dates (not trade dates) for realistic signal timing
+- Must account for transaction costs (retail trader rates: ~0.6% round-trip)
+- Must validate with walk-forward analysis to prevent overfitting
+- Must handle filing amendments and derivative securities correctly
+- Dashboard must clearly show risk (max drawdown, volatility) alongside returns
 
 **Patterns to Follow:**
-- [Pattern 1] - e.g., "Use REST API, not GraphQL"
-- [Pattern 2] - e.g., "Mobile-first responsive design"
+- Vectorized Pandas operations (no row-by-row iteration)
+- Separate data collection from analysis pipelines
+- Type hints and data classes for insider trade objects
+- Comprehensive logging for data pipeline steps
+- Unit tests for signal generation logic
 
 **Things to Avoid:**
-- [Anti-pattern 1] - e.g., "Don't use global state"
-- [Anti-pattern 2] - e.g., "Don't add features without PRD update"
+- Don't underestimate transaction costs (common backtesting mistake)
+- Don't optimize on entire dataset (use walk-forward validation)
+- Don't ignore liquidity constraints (flag low-volume stocks)
+- Don't hard-code parameters (make them configurable)
+- Don't mix insider sales with purchases (sales are weaker signals)
 
 ---
 
-## Verification Checklist
+## Research Validation
 
-*Use this to verify code matches PRD:*
+**Academic Foundation:**
+- Insider trading has 50+ years of research validation
+- C-level executives (CEO, CFO) show strongest predictive power
+- **Clustered purchases**: 2.1% monthly abnormal returns (peer-reviewed research)
+- Larger transaction sizes indicate conviction
+- Longer holding periods (6+ months) outperform short-term
 
-**For each feature:**
-1. Is the feature listed in PRD? (If no, add it or remove code)
-2. Does implementation match feature description?
-3. Are tests written and passing?
-4. Is feature marked complete in milestone?
+**Key Risk Factors:**
+- Transaction costs erode returns (30-75 bps per trade for retail)
+- Overfitting to historical patterns
+- Liquidity constraints on low-volume stocks
+- Rule 10b5-1 pre-scheduled trades (lack informational content)
+- Filing delays vary (legal minimum: 2 business days)
+- Mega-cap trades may have weak signal (small % of market cap)
 
-**For tech stack:**
-1. Is code using approved tech stack?
-2. Have we documented why if we deviated?
+**Trade-to-Market-Cap Insight:**
+- Insider purchases more predictive for smaller companies (stronger information advantage)
+- $100K in $500M company (0.00002% of market cap) >> $100K in $3T company (0.000000033%)
+- Signal strength weighted by percentage of market cap
+- Consider excluding/down-weighting mega-caps where insider trades are negligible percentage
 
 ---
 
-## Documentation Principle
+## AI Analysis Integration
 
-**Keep this PRD concise and high signal/noise:**
-- Focus on WHAT we're building, not HOW
-- Features in one line each
-- Guidelines should be actionable constraints
-- Update when requirements change, but keep it lean
+**Sonnet's Role:**
+When user views backtesting results, Sonnet analyzes:
+- Overall strategy performance vs benchmark
+- Risk-adjusted returns (Sharpe, Calmar ratios)
+- Win rate and consistency
+- Statistical significance
+- Current market conditions
+- Specific signal quality (if Phase 2)
+
+**Output Format:**
+```
+🤖 AI Analysis
+
+RECOMMENDATION: [BUY / NO BUY / CAUTIOUS]
+
+RATIONALE:
+- [Key finding 1]
+- [Key finding 2]
+- [Key finding 3]
+
+RISK FACTORS:
+- [Risk 1]
+- [Risk 2]
+
+CONFIDENCE: [High/Medium/Low]
+```
 
 ---
 
