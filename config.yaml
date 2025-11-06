@@ -24,29 +24,34 @@ filtering:
   min_cluster_size: 1
 
 # =============================================================================
-# EXECUTIVE LEVEL FILTERING (Binary - Include/Exclude)
+# EXECUTIVE LEVEL FILTERING AND WEIGHTING
 # =============================================================================
 
-# Only include these executive titles (no weighting)
-# All qualifying executives treated equally
-executive_titles_include:
-  - 'CEO'
-  - 'Chief Executive Officer'
-  - 'CFO'
-  - 'Chief Financial Officer'
-  - 'President'
-  - 'Chairman'
-  - 'Chairman of the Board'
-  - 'COO'
-  - 'Chief Operating Officer'
-  - 'Vice Chairman'
-  - 'Executive Vice President'
-  - 'EVP'
-  - 'Senior Vice President'
-  - 'SVP'
-  - 'Vice President'
-  - 'VP'
-  # Add more C-level/VP titles as discovered in data
+# Executive position weights (multiplier on final score)
+# Research shows CEO/CFO have strongest predictive power
+executive_weights:
+  # Top C-Suite (1.0 = full weight)
+  'CEO': 1.0
+  'Chief Executive Officer': 1.0
+  'CFO': 1.0
+  'Chief Financial Officer': 1.0
+  'President': 1.0
+  'Chairman': 1.0
+  'Chairman of the Board': 1.0
+  'COO': 1.0
+  'Chief Operating Officer': 1.0
+  'Vice Chairman': 1.0
+
+  # Vice Presidents (0.5 = 50% discount)
+  'Executive Vice President': 0.5
+  'EVP': 0.5
+  'Senior Vice President': 0.5
+  'SVP': 0.5
+  'Vice President': 0.5
+  'VP': 0.5
+
+  # Add more titles as discovered in data
+  # Default weight for unmatched titles: 0.3
 
 # =============================================================================
 # DOLLAR AMOUNT WEIGHTING
@@ -100,8 +105,8 @@ market_cap_weight:
 # =============================================================================
 
 scoring:
-  # How to combine the weights (no executive weight - binary filter instead)
-  # Formula: dollar_weight × cluster_weight × market_cap_weight
+  # How to combine the weights
+  # Formula: executive_weight × dollar_weight × cluster_weight × market_cap_weight
   combination_method: 'multiply'
 
   # Minimum score threshold for a signal to be actionable
