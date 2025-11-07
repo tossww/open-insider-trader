@@ -3,29 +3,43 @@
 ## 📍 Current Session Context
 
 **Session Date:** 2025-11-07
-**Where We Are:** ✅ 5-Year Data Collection Script Ready
+**Where We Are:** ✅ 2-Year Data Collection Complete + Backtest Bug Fixed
+**Data Summary:** 222 total purchases, 85 unique events. At $50K+: 99 transactions. C-suite only: 37 transactions, 10 unique events.
 **Completed This Session:**
-- ✅ Created comprehensive 5-year historical data collection script
-  - 70 tickers across 8 sectors (Tech, Finance, Healthcare, Consumer, Industrials, Energy, Telecom, Materials)
-  - Progress tracking with JSON checkpoint system - can resume if interrupted
-  - Rate limiting (10 req/sec) respects SEC API limits
-  - Comprehensive error handling and logging (file + console)
-  - Market cap integration for each filing date
-  - Auto-commit every 50 filings to preserve progress
-  - Expected runtime: 2-4 hours for full 5-year collection
-  - File: `scripts/collect_5year_history.py` (445 lines)
-  - Tested: Script structure validated, ready to run
-- **Commit:** 1138e66
+- ✅ **2-Year Data Collection** (Commit: 222a472)
+  - Created `scripts/collect_2year_history.py` for faster validation
+  - Successfully collected 5,465 filings, 12,762 transactions across 56 tickers
+  - Date range: Nov 2023 - Nov 2025 (2 years)
+  - 1,275 insiders, 1,788 market cap data points
+  - 0 failed tickers, 100% success rate
+- ✅ **Fixed Critical Backtest Bug** (Commit: 222a472)
+  - Multiple transactions from same filing were counted as separate trades
+  - Now groups by (ticker, filing_date, insider_name)
+  - **Before:** 17 "trades" → **After:** 3 unique insider events
+  - Results now accurate: 21d period = 100% win rate, 2.07% avg return, +1.35% alpha
+- ✅ **Relaxed Filtering Criteria** (Commit: 222a472)
+  - Removed market cap % filter (was too restrictive: 0.00001%)
+  - Lowered min signal score from 2.0 → 1.5
+  - Added LLY (Eli Lilly) CEO signal
+  - 18 → 19 signals now captured
+- ✅ **Fixed Git Issues** (Commit: 222a472)
+  - Added 5,453 SEC API cache files to .gitignore
+  - Added logs, progress files, backups to .gitignore
+  - Clean git status now
 
-**Working On:** Nothing currently in progress
+**Working On:** Nothing in progress
 
 **Next Up:**
-1. **PRIORITY:** Run 5-year data collection (2-4 hours)
-   - Command: `python3 scripts/collect_5year_history.py`
-   - Can interrupt and resume - progress saved to `data/collection_progress.json`
-   - Logs to `data/collection_5year.log`
-2. Generate signals on full dataset: `python3 scripts/generate_signals.py --store-db`
-3. Re-run dashboard with robust data, review AI recommendations with statistical validity
+1. **Build Interactive Parameter Testing Dashboard** - HIGH PRIORITY
+   - Sliders for min_trade_value ($25K-$500K), min_signal_score (0.5-5.0), min_market_cap_pct
+   - Checkboxes for exec levels (C-Suite, VP, All)
+   - Live signal count preview + top signals table
+   - Export CSV and one-click backtest buttons
+   - Visual funnel showing filtering stages
+2. **Consider lowering min_trade_value** from $100K to $50K for more signals (99 transactions available)
+3. **Extend data collection** to full 5 years for statistical validity
+4. **Add more executive titles** to capture VP-level trades with strong signal
+5. **Review PRD** - decide if 3 signals in 2 years meets validation goals
 
 ---
 
@@ -164,7 +178,16 @@
 
 ## Completed Milestones
 
-*(None yet - first session)*
+### ✅ **Milestone 4: 2-Year Data Collection & Validation**
+**Completed:** 2025-11-07 | **Commit:** 222a472
+
+**Results:**
+- 5,465 Form 4 filings collected (Nov 2023 - Nov 2025)
+- 12,762 transactions, 1,275 insiders, 56 tickers
+- 19 high-conviction signals identified (score ≥ 1.5)
+- Backtest: 3 unique events, 100% win rate at 21d, +1.35% alpha
+
+**Files:** `scripts/collect_2year_history.py`, `config.yaml` (relaxed filters), `src/backtesting/backtest_engine.py` (grouping fix), `.gitignore` (cache exclusions)
 
 ---
 
