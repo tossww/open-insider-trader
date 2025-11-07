@@ -1,6 +1,7 @@
 # Core data processing
 pandas>=2.0.0
 numpy>=1.24.0
+scipy>=1.10.0
 
 # Backtesting
 # vectorbt>=0.26.0  # Temporarily removed due to numba build issues on Python 3.9
@@ -8,6 +9,8 @@ numpy>=1.24.0
 
 # Visualization
 plotly>=5.14.0
+dash>=3.0.0
+dash-bootstrap-components>=2.0.0
 
 # Data collection
 requests>=2.31.0
