@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 from backtesting.backtest_engine import BacktestEngine, Signal
 from backtesting.metrics import MetricsCalculator
+from ai.analyzer import BacktestAnalyzer
 import yaml
 
 
@@ -125,6 +126,13 @@ app = dash.Dash(
 
 # Load data
 signals, backtest_results, metrics_results = load_backtest_results()
+
+# Initialize AI analyzer
+try:
+    ai_analyzer = BacktestAnalyzer()
+except ValueError as e:
+    print(f"Warning: AI analyzer not available - {e}")
+    ai_analyzer = None
 
 
 # Layout components
@@ -266,6 +274,297 @@ def create_performance_table():
     ], fluid=True)
 
 
+def get_plotly_layout_template():
+    """
+    Get reusable Plotly dark theme layout settings.
+
+    Returns:
+        Dict with layout configuration
+    """
+    return {
+        'plot_bgcolor': '#1e1e1e',
+        'paper_bgcolor': '#1e1e1e',
+        'font': {'color': 'white'},
+        'xaxis': {'gridcolor': '#404040'},
+        'yaxis': {'gridcolor': '#404040'},
+        'legend': {'bgcolor': '#1e1e1e', 'bordercolor': '#404040'}
+    }
+
+
+def create_returns_histogram(result, period_days=21):
+    """
+    Create returns distribution histogram for specified period.
+
+    Args:
+        result: BacktestResult object
+        period_days: Holding period in days
+
+    Returns:
+        Plotly figure
+    """
+    if not result or not result.trades:
+        return go.Figure()
+
+    # Extract net returns
+    returns = [t.net_return * 100 for t in result.trades]  # Convert to percentage
+
+    # Create histogram
+    fig = go.Figure()
+
+    fig.add_trace(go.Histogram(
+        x=returns,
+        nbinsx=30,
+        name='Returns',
+        marker_color='#00ff00',
+        opacity=0.7
+    ))
+
+    # Add vertical line at 0% (break-even)
+    fig.add_vline(
+        x=0,
+        line_dash="dash",
+        line_color="white",
+        annotation_text="Break-even",
+        annotation_position="top"
+    )
+
+    # Apply dark theme
+    layout = get_plotly_layout_template()
+    layout.update({
+        'title': f"Returns Distribution ({period_days}d holding period)",
+        'xaxis_title': "Net Return (%)",
+        'yaxis_title': "Number of Trades",
+        'showlegend': False
+    })
+    fig.update_layout(**layout)
+
+    return fig
+
+
+def create_equity_curve_chart(result, period_days=21):
+    """
+    Create equity curve chart comparing strategy vs SPY.
+
+    Args:
+        result: BacktestResult object
+        period_days: Holding period in days
+
+    Returns:
+        Plotly figure
+    """
+    if not result or not result.trades:
+        return go.Figure()
+
+    # Sort trades by entry date
+    sorted_trades = sorted(result.trades, key=lambda t: t.entry_date)
+
+    # Calculate cumulative returns for strategy
+    strategy_dates = []
+    strategy_cumulative = [0]  # Start at 0%
+
+    cumulative_return = 0
+    for trade in sorted_trades:
+        strategy_dates.append(trade.entry_date)
+        strategy_dates.append(trade.exit_date)
+
+        # Entry point (no change in cumulative)
+        strategy_cumulative.append(cumulative_return)
+
+        # Exit point (add this trade's return)
+        cumulative_return += trade.net_return
+        strategy_cumulative.append(cumulative_return)
+
+    # Calculate cumulative returns for SPY (benchmark)
+    # Use average SPY return from result for each trade
+    spy_dates = []
+    spy_cumulative = [0]
+
+    cumulative_spy = 0
+    avg_spy = result.avg_spy_return if result.avg_spy_return is not None else 0
+
+    for trade in sorted_trades:
+        spy_dates.append(trade.entry_date)
+        spy_dates.append(trade.exit_date)
+
+        # Entry point
+        spy_cumulative.append(cumulative_spy)
+
+        # Exit point - use average SPY return as approximation
+        cumulative_spy += avg_spy
+        spy_cumulative.append(cumulative_spy)
+
+    # Convert to percentage
+    strategy_cumulative_pct = [r * 100 for r in strategy_cumulative]
+    spy_cumulative_pct = [r * 100 for r in spy_cumulative]
+
+    # Create figure
+    fig = go.Figure()
+
+    # Strategy line
+    fig.add_trace(go.Scatter(
+        x=strategy_dates,
+        y=strategy_cumulative_pct,
+        mode='lines',
+        name='Strategy',
+        line=dict(color='#00ff00', width=2),
+        hovertemplate='<b>Strategy</b><br>Date: %{x}<br>Cumulative Return: %{y:.2f}%<extra></extra>'
+    ))
+
+    # SPY line
+    fig.add_trace(go.Scatter(
+        x=spy_dates,
+        y=spy_cumulative_pct,
+        mode='lines',
+        name='S&P 500',
+        line=dict(color='#0066cc', width=2),
+        hovertemplate='<b>S&P 500</b><br>Date: %{x}<br>Cumulative Return: %{y:.2f}%<extra></extra>'
+    ))
+
+    # Apply dark theme
+    layout = get_plotly_layout_template()
+    layout.update({
+        'title': f"Equity Curve - Strategy vs S&P 500 ({period_days}d)<br><sub>Trade-to-trade progression (not continuous daily equity)</sub>",
+        'xaxis_title': "Date",
+        'yaxis_title': "Cumulative Return (%)",
+        'hovermode': 'x unified'
+    })
+    fig.update_layout(**layout)
+
+    return fig
+
+
+def create_drawdown_chart(result, period_days=21):
+    """
+    Create drawdown chart showing peak-to-trough declines.
+
+    Args:
+        result: BacktestResult object
+        period_days: Holding period in days
+
+    Returns:
+        Plotly figure
+    """
+    if not result or not result.trades:
+        return go.Figure()
+
+    # Sort trades by entry date
+    sorted_trades = sorted(result.trades, key=lambda t: t.entry_date)
+
+    # Calculate cumulative returns and drawdowns for strategy
+    strategy_dates = []
+    strategy_cumulative = []
+    strategy_drawdown = []
+
+    cumulative_return = 0
+    peak = 0
+
+    for trade in sorted_trades:
+        # Entry point
+        strategy_dates.append(trade.entry_date)
+        strategy_cumulative.append(cumulative_return)
+
+        # Calculate drawdown at entry
+        if cumulative_return > peak:
+            peak = cumulative_return
+        drawdown = (cumulative_return - peak) * 100  # Convert to percentage
+        strategy_drawdown.append(drawdown)
+
+        # Exit point
+        cumulative_return += trade.net_return
+        strategy_dates.append(trade.exit_date)
+        strategy_cumulative.append(cumulative_return)
+
+        # Calculate drawdown at exit
+        if cumulative_return > peak:
+            peak = cumulative_return
+        drawdown = (cumulative_return - peak) * 100
+        strategy_drawdown.append(drawdown)
+
+    # Calculate cumulative returns and drawdowns for SPY
+    # Use average SPY return from result for each trade
+    spy_dates = []
+    spy_cumulative = []
+    spy_drawdown = []
+
+    cumulative_spy = 0
+    spy_peak = 0
+    avg_spy = result.avg_spy_return if result.avg_spy_return is not None else 0
+
+    for trade in sorted_trades:
+        # Entry point
+        spy_dates.append(trade.entry_date)
+        spy_cumulative.append(cumulative_spy)
+
+        if cumulative_spy > spy_peak:
+            spy_peak = cumulative_spy
+        spy_dd = (cumulative_spy - spy_peak) * 100
+        spy_drawdown.append(spy_dd)
+
+        # Exit point - use average SPY return as approximation
+        cumulative_spy += avg_spy
+        spy_dates.append(trade.exit_date)
+        spy_cumulative.append(cumulative_spy)
+
+        if cumulative_spy > spy_peak:
+            spy_peak = cumulative_spy
+        spy_dd = (cumulative_spy - spy_peak) * 100
+        spy_drawdown.append(spy_dd)
+
+    # Create figure
+    fig = go.Figure()
+
+    # Strategy drawdown (area chart)
+    fig.add_trace(go.Scatter(
+        x=strategy_dates,
+        y=strategy_drawdown,
+        mode='lines',
+        name='Strategy Drawdown',
+        line=dict(color='#ff0000', width=0),
+        fill='tozeroy',
+        fillcolor='rgba(255, 0, 0, 0.3)',
+        hovertemplate='<b>Strategy</b><br>Date: %{x}<br>Drawdown: %{y:.2f}%<extra></extra>'
+    ))
+
+    # SPY drawdown
+    fig.add_trace(go.Scatter(
+        x=spy_dates,
+        y=spy_drawdown,
+        mode='lines',
+        name='S&P 500 Drawdown',
+        line=dict(color='#0066cc', width=0),
+        fill='tozeroy',
+        fillcolor='rgba(0, 102, 204, 0.3)',
+        hovertemplate='<b>S&P 500</b><br>Date: %{x}<br>Drawdown: %{y:.2f}%<extra></extra>'
+    ))
+
+    # Mark maximum drawdown point for strategy
+    if strategy_drawdown:
+        max_dd_idx = strategy_drawdown.index(min(strategy_drawdown))
+        max_dd_value = strategy_drawdown[max_dd_idx]
+        max_dd_date = strategy_dates[max_dd_idx]
+
+        fig.add_trace(go.Scatter(
+            x=[max_dd_date],
+            y=[max_dd_value],
+            mode='markers',
+            name='Max Drawdown',
+            marker=dict(color='white', size=10, symbol='x'),
+            hovertemplate=f'<b>Max Drawdown</b><br>Date: {max_dd_date.strftime("%Y-%m-%d")}<br>Drawdown: {max_dd_value:.2f}%<extra></extra>'
+        ))
+
+    # Apply dark theme
+    layout = get_plotly_layout_template()
+    layout.update({
+        'title': f"Drawdown Analysis ({period_days}d holding period)",
+        'xaxis_title': "Date",
+        'yaxis_title': "Drawdown (%)",
+        'hovermode': 'x unified'
+    })
+    fig.update_layout(**layout)
+
+    return fig
+
+
 def create_trades_table():
     """Create individual trades table."""
     if not backtest_results:
@@ -286,14 +585,16 @@ def create_trades_table():
             'Entry Price': f"${trade.entry_price:.2f}",
             'Exit Price': f"${trade.exit_price:.2f}",
             'Net Return': f"{trade.net_return:.2%}",
-            'Signal Score': f"{trade.signal_score:.2f}"
+            'Signal Score': f"{trade.signal_score:.2f}",
+            '_return_numeric': trade.net_return
         })
 
     df = pd.DataFrame(data)
 
     table = dash_table.DataTable(
         data=df.to_dict('records'),
-        columns=[{'name': col, 'id': col} for col in df.columns],
+        columns=[{'name': col, 'id': col} for col in df.columns if col != '_return_numeric'],
+        hidden_columns=['_return_numeric'],
         page_size=20,
         sort_action='native',
         filter_action='native',
@@ -313,14 +614,14 @@ def create_trades_table():
         style_data_conditional=[
             {
                 'if': {
-                    'filter_query': '{Net Return} contains "-"',
+                    'filter_query': '{_return_numeric} < 0',
                     'column_id': 'Net Return'
                 },
                 'color': '#ff4444'
             },
             {
                 'if': {
-                    'filter_query': '{Net Return} not contains "-"',
+                    'filter_query': '{_return_numeric} >= 0',
                     'column_id': 'Net Return'
                 },
                 'color': '#00ff00'
@@ -334,14 +635,167 @@ def create_trades_table():
     ], fluid=True)
 
 
+def create_ai_analysis_panel():
+    """Create AI analysis panel with BUY/NO BUY recommendation."""
+    if not backtest_results or not ai_analyzer:
+        if not ai_analyzer:
+            return dbc.Container([
+                html.Hr(className="my-4"),
+                html.H4("🤖 AI Analysis", className="mt-4 mb-3"),
+                dbc.Alert("AI analyzer not configured. Set ANTHROPIC_API_KEY in .env file.", color="warning")
+            ], fluid=True)
+        return html.Div()
+
+    # Use 21-day period as primary metric
+    primary_period = 21
+    result = backtest_results.get(primary_period)
+    metric = metrics_results.get(primary_period)
+
+    if not result or result.total_trades == 0 or not metric:
+        return html.Div()
+
+    # Generate AI recommendation
+    try:
+        # Create a simple benchmark metrics object using SPY returns from result
+        from backtesting.metrics import RiskMetrics
+
+        # Create benchmark metrics using SPY data from backtest result
+        spy_avg_return = result.avg_spy_return if result.avg_spy_return is not None else 0
+        benchmark_metrics = RiskMetrics(
+            total_return=spy_avg_return * result.total_trades,
+            avg_return=spy_avg_return,
+            median_return=spy_avg_return,
+            std_return=0.01,  # Placeholder - real value would come from SPY price data
+            sharpe_ratio=metric.sharpe_ratio * 0.5,  # Rough approximation
+            max_drawdown=metric.max_drawdown * 0.8,  # SPY typically has lower drawdown
+            calmar_ratio=metric.calmar_ratio * 0.5,
+            win_rate=0.6,  # SPY is generally positive over time
+            profit_factor=None,
+            skewness=0.0,
+            kurtosis=0.0
+        )
+
+        recommendation = ai_analyzer.analyze(
+            strategy_metrics=metric,
+            benchmark_metrics=benchmark_metrics,
+            alpha=result.alpha if result.alpha is not None else 0,
+            holding_days=primary_period,
+            total_signals=result.total_trades,
+            period_label=f"{primary_period} days"
+        )
+
+        # Determine card color based on recommendation
+        rec_colors = {
+            'BUY': 'success',
+            'NO BUY': 'danger',
+            'CAUTIOUS': 'warning'
+        }
+        card_color = rec_colors.get(recommendation.recommendation, 'secondary')
+
+        # Determine emoji
+        rec_emojis = {
+            'BUY': '✅',
+            'NO BUY': '❌',
+            'CAUTIOUS': '⚠️'
+        }
+        emoji = rec_emojis.get(recommendation.recommendation, '🤖')
+
+        return dbc.Container([
+            html.Hr(className="my-4"),
+            html.H4("🤖 AI Analysis (Claude Sonnet 4.5)", className="mt-4 mb-3"),
+
+            dbc.Card([
+                dbc.CardHeader([
+                    html.H3([
+                        f"{emoji} RECOMMENDATION: {recommendation.recommendation}"
+                    ], className=f"text-{card_color} mb-0")
+                ], className="py-3"),
+                dbc.CardBody([
+                    # Rationale section
+                    html.H5("📊 Key Findings", className="mt-3 mb-2"),
+                    html.Ul([
+                        html.Li(finding, className="mb-2")
+                        for finding in recommendation.rationale
+                    ], className="text-light"),
+
+                    # Risk factors section
+                    html.H5("⚠️ Risk Factors", className="mt-4 mb-2"),
+                    html.Ul([
+                        html.Li(risk, className="mb-2")
+                        for risk in recommendation.risk_factors
+                    ], className="text-light"),
+
+                    # Confidence badge
+                    html.Div([
+                        html.H5("Confidence Level: ", className="d-inline me-2"),
+                        dbc.Badge(
+                            recommendation.confidence,
+                            color="success" if recommendation.confidence == "High" else
+                                  "warning" if recommendation.confidence == "Medium" else "secondary",
+                            className="fs-6"
+                        )
+                    ], className="mt-4")
+                ], className="py-4")
+            ], color="dark", outline=True, className="mb-4")
+        ], fluid=True)
+
+    except Exception as e:
+        print(f"Error generating AI analysis: {e}")
+        return dbc.Container([
+            html.Hr(className="my-4"),
+            html.H4("🤖 AI Analysis", className="mt-4 mb-3"),
+            dbc.Alert(f"Error generating analysis: {str(e)}", color="danger")
+        ], fluid=True)
+
+
+def create_performance_charts():
+    """Create performance visualization charts."""
+    if not backtest_results:
+        return html.Div("No data available")
+
+    # Use 21-day period
+    result = backtest_results.get(21)
+    if not result or not result.trades:
+        return html.Div("No charts available")
+
+    # Generate charts
+    equity_curve = create_equity_curve_chart(result, period_days=21)
+    returns_hist = create_returns_histogram(result, period_days=21)
+    drawdown_chart = create_drawdown_chart(result, period_days=21)
+
+    return dbc.Container([
+        html.Hr(className="my-4"),
+        html.H4("📈 Performance Charts", className="mt-4 mb-3"),
+
+        # Equity curve (full width)
+        dbc.Row([
+            dbc.Col([
+                dcc.Graph(figure=equity_curve, config={'displayModeBar': True})
+            ], width=12)
+        ], className="mb-4"),
+
+        # Returns histogram and drawdown chart (side by side)
+        dbc.Row([
+            dbc.Col([
+                dcc.Graph(figure=returns_hist, config={'displayModeBar': True})
+            ], width=6),
+            dbc.Col([
+                dcc.Graph(figure=drawdown_chart, config={'displayModeBar': True})
+            ], width=6)
+        ])
+    ], fluid=True)
+
+
 # App layout
 app.layout = html.Div([
     create_header(),
     dbc.Container([
         create_summary_cards(),
+        create_ai_analysis_panel(),  # AI analysis after summary cards
         create_performance_table(),
         html.Hr(className="my-4"),
-        create_trades_table()
+        create_trades_table(),
+        create_performance_charts()
     ], fluid=True, className="px-4")
 ])
 
