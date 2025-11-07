@@ -190,6 +190,9 @@ class BacktestEngine:
         """
         Backtest multiple signals for a single holding period.
 
+        Groups transactions by (ticker, filing_date, insider) to avoid
+        treating multiple transactions from the same filing as separate trades.
+
         Args:
             signals: List of signals to trade
             holding_days: Number of trading days to hold
@@ -197,11 +200,28 @@ class BacktestEngine:
         Returns:
             Aggregated backtest results
         """
-        # Fetch price data for all unique tickers
-        tickers = list(set(s.ticker for s in signals))
-        min_date = min(s.filing_date for s in signals)
+        # Group signals by (ticker, filing_date, insider_name)
+        # This ensures we treat multiple transactions from the same filing as ONE trade
+        grouped_signals = {}
+        for signal in signals:
+            key = (signal.ticker, signal.filing_date.date(), signal.insider_name)
+            if key not in grouped_signals:
+                grouped_signals[key] = signal
+            else:
+                # Keep the signal with highest total_value
+                if signal.total_value > grouped_signals[key].total_value:
+                    grouped_signals[key] = signal
 
-        print(f"\nBacktesting {len(signals)} signals for {holding_days} day holding period...")
+        # Use the grouped signals for backtesting
+        unique_signals = list(grouped_signals.values())
+
+        print(f"\nGrouped {len(signals)} transactions into {len(unique_signals)} unique insider events")
+        print(f"Backtesting {len(unique_signals)} signals for {holding_days} day holding period...")
+
+        # Fetch price data for all unique tickers
+        tickers = list(set(s.ticker for s in unique_signals))
+        min_date = min(s.filing_date for s in unique_signals)
+
         print(f"Fetching price data for {len(tickers)} tickers from {min_date.date()}...")
 
         price_data_map = self.price_fetcher.fetch_batch(
@@ -210,10 +230,10 @@ class BacktestEngine:
             end_date=None
         )
 
-        # Backtest each signal
+        # Backtest each unique signal (grouped by filing)
         trade_results: List[TradeResult] = []
 
-        for signal in signals:
+        for signal in unique_signals:
             if signal.ticker not in price_data_map:
                 print(f"Warning: No price data for {signal.ticker}, skipping")
                 continue
