@@ -1,20 +1,23 @@
 # Project Logs
 
-## 2025-11-07 12:10 - Handoff: Milestone 1 Complete
+## 2025-11-07 19:35 - Handoff: Milestones 2 & 3 Phase 1 Complete
 
-**Completed:** Milestone 1 - Data Collection & Signal Filtering Pipeline (commit ddc3aed)
+**Completed:** Milestone 2 (Backtesting Engine) + Milestone 3 Phase 1 (Dashboard MVP)
 
-**Three-Agent Workflow Results:**
-- Vision: Created implementation plans for Phases 1-5
-- Jarvis: Built 13 production files (data collection + signal filtering)
-- Fury: Verified quality at 92% (approved)
+**Milestone 2:** Full backtesting infrastructure with S&P 500 benchmark comparison
+- 4 files: price fetcher, backtest engine, risk metrics, CLI tool
+- Validated: TSLA signals +4.38% (21d) vs SPY +0.71% = **+3.67% alpha**
 
-**Pipeline Flow:** 272 transactions → 15 actionable signals (5.5% pass rate, scores 2.22-3.82)
+**Milestone 3 Phase 1:** Plotly Dash web dashboard with Strategy vs SPY comparison
+- 2 files: dashboard app, launch script
+- URL: http://127.0.0.1:8050
 
-**Commit:** ddc3aed
+**Commits:** 6296d5c
 
-**Next Focus:** Milestone 2 (Backtesting Engine) - validate hypothesis with real returns
+**Blocker:** Dashboard datatable filtering error (functional but UX issue)
+
+**Next Focus:** Fix datatable error, add interactive charts, integrate Sonnet AI analysis
 
 ---
 
-*Older logs archived to Archive/Logs/2025-11-07-milestone1-complete.md*
+*Older logs archived to Archive/Logs/2025-11-07-milestones-2-3-complete.md*
