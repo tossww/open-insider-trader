@@ -2,10 +2,10 @@
 
 ## 📍 Current Session Context
 
-**Session Date:** 2025-11-06
-**Where We Are:** Milestone 0 - Research complete, PRD/config created
-**Working On:** Setting up GitHub repo and project structure
-**Next Up:** Complete Milestone 0 (repo + Python env + folder structure), then begin Milestone 1 data collection
+**Session Date:** 2025-11-07
+**Where We Are:** Milestone 1 Phases 3-5 COMPLETE - Full pipeline operational
+**Working On:** Pipeline generates 15 actionable signals from 272 transactions (scores 2.22-3.82)
+**Next Up:** Milestone 2 (Backtesting Engine) or Phase 6 validation (data quality checks + unit tests)
 
 ---
 
@@ -60,13 +60,20 @@
 
 ## Future Milestones
 
-### Milestone 1: Data Collection Pipeline
-**Goal:** Collect and process 5 years of SEC Form 4 insider trading data
+### ✅ **Milestone 1: Signal Filtering and Scoring Pipeline**
+**Goal:** Build complete signal filtering, clustering, and scoring system
 **Key Tasks:**
-- SEC EDGAR API integration
-- Form 4 parser with amendment handling
-- Database schema design and implementation
-- Signal filters (C-level, $100K+, clustering detection)
+- ✅ Executive position classifier with fuzzy matching
+- ✅ Multi-stage signal filters (purchases, $100K+, executive, market cap %)
+- ✅ Cluster detection (7-day window, same company)
+- ✅ Composite scoring (exec × dollar × cluster × market_cap)
+- ✅ Pipeline orchestration and CLI interface
+- ✅ Database storage (FilteredSignal table)
+
+**Completed:** 2025-11-07 11:56
+**Results:** 272 transactions → 15 actionable signals (scores 2.22-3.82), all sanity checks passed
+**Files:** `src/processors/executive_classifier.py`, `src/processors/signal_filters.py`, `src/processors/cluster_detector.py`, `src/processors/signal_scorer.py`, `src/pipeline/signal_generator.py`, `scripts/generate_signals.py`, `src/database/schema.py`
+**CLI:** `python scripts/generate_signals.py --top-n 20 --store-db`
 
 ### Milestone 2: Backtesting Engine
 **Goal:** Build and validate backtesting system with realistic assumptions
