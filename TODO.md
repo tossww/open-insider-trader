@@ -3,43 +3,31 @@
 ## 📍 Current Session Context
 
 **Session Date:** 2025-11-07
-**Where We Are:** ✅ 2-Year Data Collection Complete + Backtest Bug Fixed
-**Data Summary:** 222 total purchases, 85 unique events. At $50K+: 99 transactions. C-suite only: 37 transactions, 10 unique events.
+**Where We Are:** ✅ Enhanced Unified Dashboard with Trade-by-Trade Details
+**Data Summary:** 3,479 total transactions in database. Default filters (C-Suite, $100K+, Score 1.5+): 130 signals (3.74% pass rate).
 **Completed This Session:**
-- ✅ **2-Year Data Collection** (Commit: 222a472)
-  - Created `scripts/collect_2year_history.py` for faster validation
-  - Successfully collected 5,465 filings, 12,762 transactions across 56 tickers
-  - Date range: Nov 2023 - Nov 2025 (2 years)
-  - 1,275 insiders, 1,788 market cap data points
-  - 0 failed tickers, 100% success rate
-- ✅ **Fixed Critical Backtest Bug** (Commit: 222a472)
-  - Multiple transactions from same filing were counted as separate trades
-  - Now groups by (ticker, filing_date, insider_name)
-  - **Before:** 17 "trades" → **After:** 3 unique insider events
-  - Results now accurate: 21d period = 100% win rate, 2.07% avg return, +1.35% alpha
-- ✅ **Relaxed Filtering Criteria** (Commit: 222a472)
-  - Removed market cap % filter (was too restrictive: 0.00001%)
-  - Lowered min signal score from 2.0 → 1.5
-  - Added LLY (Eli Lilly) CEO signal
-  - 18 → 19 signals now captured
-- ✅ **Fixed Git Issues** (Commit: 222a472)
-  - Added 5,453 SEC API cache files to .gitignore
-  - Added logs, progress files, backups to .gitignore
-  - Clean git status now
+- ✅ **Enhanced Unified Dashboard** (NEW)
+  - Updated `src/dashboard/unified_dashboard.py` with comprehensive trade-by-trade analysis
+  - All holding periods: 5D, 1M, 3M, 6M, 1Y, 2Y
+  - Detailed table showing EVERY trade's returns across all periods
+  - S&P 500 benchmark returns for each period
+  - Alpha calculation (strategy - SPY) for each period
+  - Average row at bottom summarizing performance
+  - Color-coded: green for positive, red for negative returns
+  - Sortable, filterable, 50 rows per page
+  - Launch: `python3 scripts/run_unified_dashboard.py` → http://127.0.0.1:8052
+  - Updated DASHBOARD_GUIDE.md with new features
+- ✅ **Previous session:**
+  - Interactive Parameter Testing Dashboard (param_tuner.py)
+  - 2-Year Data Collection (Commit: 222a472)
+  - Fixed Critical Backtest Bug (Commit: 222a472)
 
-**Working On:** Nothing in progress
+**Working On:** Ready for commit
 
 **Next Up:**
-1. **Build Interactive Parameter Testing Dashboard** - HIGH PRIORITY
-   - Sliders for min_trade_value ($25K-$500K), min_signal_score (0.5-5.0), min_market_cap_pct
-   - Checkboxes for exec levels (C-Suite, VP, All)
-   - Live signal count preview + top signals table
-   - Export CSV and one-click backtest buttons
-   - Visual funnel showing filtering stages
-2. **Consider lowering min_trade_value** from $100K to $50K for more signals (99 transactions available)
+1. **Commit enhanced dashboard** to repository
+2. **Test parameter combinations** to find optimal signal capture
 3. **Extend data collection** to full 5 years for statistical validity
-4. **Add more executive titles** to capture VP-level trades with strong signal
-5. **Review PRD** - decide if 3 signals in 2 years meets validation goals
 
 ---
 
