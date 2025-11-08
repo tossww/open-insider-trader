@@ -68,7 +68,7 @@ def load_all_transactions(db_path: str = 'data/insider_trades.db'):
             mc.company_id = c.id
             AND DATE(mc.date) = DATE(it.filing_date)
         )
-        WHERE it.transaction_code IN ('P', 'M')  -- Only purchases
+        WHERE it.transaction_code = 'P'  -- Only direct purchases (exclude option exercises)
         ORDER BY it.filing_date DESC
     """
 
@@ -104,7 +104,10 @@ def apply_filters(df, min_trade_value, min_market_cap_pct, exec_levels, min_sign
     classifier = ExecutiveClassifier('config.yaml')
 
     # Step 1: Dollar value filter
-    df_filtered = df[df['total_value'] >= min_trade_value].copy()
+    # Fill NaN total_value with 0 to avoid filtering them out when min=0
+    df_filtered = df.copy()
+    df_filtered['total_value'] = df_filtered['total_value'].fillna(0)
+    df_filtered = df_filtered[df_filtered['total_value'] >= min_trade_value].copy()
     stats['after_dollar_filter'] = len(df_filtered)
 
     # Step 2: Executive level filter
@@ -112,7 +115,11 @@ def apply_filters(df, min_trade_value, min_market_cap_pct, exec_levels, min_sign
         lambda x: classifier.get_weight(x)
     )
 
-    if 'C-Suite' in exec_levels and 'VP' not in exec_levels:
+    # Check if "Include All Executives" is selected
+    if 'All' in exec_levels:
+        # Keep ALL transactions, no executive filtering
+        pass
+    elif 'C-Suite' in exec_levels and 'VP' not in exec_levels:
         # Only C-Suite (weight = 1.0)
         df_filtered = df_filtered[df_filtered['exec_weight'] == 1.0]
     elif 'VP' in exec_levels and 'C-Suite' not in exec_levels:
@@ -121,9 +128,9 @@ def apply_filters(df, min_trade_value, min_market_cap_pct, exec_levels, min_sign
     elif 'C-Suite' in exec_levels and 'VP' in exec_levels:
         # C-Suite + VP (weight >= 0.5)
         df_filtered = df_filtered[df_filtered['exec_weight'] >= 0.5]
-    # If 'All' is selected or neither, keep all (exec_weight > 0)
     else:
-        df_filtered = df_filtered[df_filtered['exec_weight'] > 0]
+        # No checkboxes selected - default to keeping all
+        pass
 
     stats['after_exec_filter'] = len(df_filtered)
 
@@ -143,10 +150,12 @@ def apply_filters(df, min_trade_value, min_market_cap_pct, exec_levels, min_sign
     # For simplicity, we'll calculate a basic score here
     # (In production, this would use the full SignalScorer)
 
-    # Dollar weight (log scale)
+    # Dollar weight (log scale) - handle zero/low values
     base_amount = 100000
-    df_filtered['dollar_weight'] = 1 + 0.5 * np.log10(
-        df_filtered['total_value'] / base_amount
+    # Clip dollar_weight to minimum 0.0 to prevent negative scores
+    df_filtered['dollar_weight'] = np.maximum(
+        0.0,
+        1 + 0.5 * np.log10(np.clip(df_filtered['total_value'], 1, None) / base_amount)
     )
 
     # Market cap weight
@@ -166,6 +175,9 @@ def apply_filters(df, min_trade_value, min_market_cap_pct, exec_levels, min_sign
         df_filtered['dollar_weight'] *
         df_filtered['market_cap_weight']
     )
+
+    # Fill any NaN scores with 0
+    df_filtered['composite_score'] = df_filtered['composite_score'].fillna(0)
 
     # Step 5: Score filter
     df_filtered = df_filtered[df_filtered['composite_score'] >= min_signal_score]
@@ -211,12 +223,13 @@ def create_controls():
                     html.Label("Minimum Trade Value", className="fw-bold mb-2"),
                     dcc.Slider(
                         id='min-trade-value-slider',
-                        min=25000,
+                        min=0,
                         max=500000,
-                        step=25000,
+                        step=10000,
                         value=DEFAULT_CONFIG['filtering']['min_trade_value'],
                         marks={
-                            25000: '$25K',
+                            0: '$0',
+                            50000: '$50K',
                             100000: '$100K',
                             250000: '$250K',
                             500000: '$500K'
@@ -231,12 +244,12 @@ def create_controls():
                     html.Label("Minimum Signal Score", className="fw-bold mb-2"),
                     dcc.Slider(
                         id='min-signal-score-slider',
-                        min=0.5,
+                        min=0,
                         max=5.0,
                         step=0.1,
                         value=DEFAULT_CONFIG['scoring']['min_signal_score'],
                         marks={
-                            0.5: '0.5',
+                            0: '0',
                             1.0: '1.0',
                             2.0: '2.0',
                             3.0: '3.0',
