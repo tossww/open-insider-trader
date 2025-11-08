@@ -68,10 +68,10 @@ def load_all_transactions(db_path: str = 'data/insider_trades.db'):
 
 def apply_filters_and_backtest(df, min_trade_value, min_market_cap_pct, exec_levels, min_signal_score):
     """
-    Apply filters, calculate scores, and run backtest.
+    Apply filters, calculate scores, run backtest, and create ticker-level results.
 
     Returns:
-        Tuple of (filtered_df, stats, backtest_results, metrics_results)
+        Tuple of (ticker_results_df, avg_performance_dict, stats, all_results, all_metrics)
     """
     stats = {
         'total_transactions': len(df),
@@ -89,7 +89,7 @@ def apply_filters_and_backtest(df, min_trade_value, min_market_cap_pct, exec_lev
     stats['after_dollar_filter'] = len(df_filtered)
 
     if len(df_filtered) == 0:
-        return df_filtered, stats, {}, {}
+        return pd.DataFrame(), {}, stats, {}, {}
 
     # Filter 2: Executive level
     df_filtered['exec_weight'] = df_filtered['officer_title'].apply(
@@ -108,7 +108,7 @@ def apply_filters_and_backtest(df, min_trade_value, min_market_cap_pct, exec_lev
     stats['after_exec_filter'] = len(df_filtered)
 
     if len(df_filtered) == 0:
-        return df_filtered, stats, {}, {}
+        return pd.DataFrame(), {}, stats, {}, {}
 
     # Filter 3: Market cap %
     if min_market_cap_pct > 0:
@@ -149,59 +149,111 @@ def apply_filters_and_backtest(df, min_trade_value, min_market_cap_pct, exec_lev
     stats['after_score_filter'] = len(df_filtered)
 
     if len(df_filtered) == 0:
-        return df_filtered, stats, {}, {}
+        return pd.DataFrame(), {}, stats, {}, {}
 
     # Sort by score
     df_filtered = df_filtered.sort_values('composite_score', ascending=False)
 
-    # Convert to Signal objects for backtesting
-    signals = []
-    for _, row in df_filtered.iterrows():
-        signals.append(Signal(
-            ticker=row['ticker'],
-            filing_date=pd.to_datetime(row['filing_date']),
-            trade_date=pd.to_datetime(row['trade_date']),
-            insider_name=row['insider_name'],
-            officer_title=row['officer_title'] or 'Unknown',
-            total_value=row['total_value'],
-            composite_score=row['composite_score'],
-            cluster_size=1  # Simplified - not doing clustering in real-time
-        ))
-
-    # Run backtest
+    # Run backtest for each ticker
     engine = BacktestEngine(
         commission_pct=DEFAULT_CONFIG['backtesting']['commission_pct'],
         slippage_pct=DEFAULT_CONFIG['backtesting']['slippage_pct']
     )
 
-    # All requested periods: 5D, 1M, 3M, 6M, 1Y, 2Y
-    holding_periods = [5, 21, 63, 126, 252, 504]
-    results = engine.backtest_multiple_periods(signals, holding_periods)
+    holding_periods = [1, 5, 21, 252]  # 1d, 1w, 1m, 1y
+    period_labels = {1: '1d', 5: '1w', 21: '1m', 252: '1y'}
+
+    ticker_results = []
+    all_signals = []
+
+    for ticker in df_filtered['ticker'].unique():
+        ticker_df = df_filtered[df_filtered['ticker'] == ticker]
+
+        # Create signals for this ticker
+        ticker_signals = []
+        for _, row in ticker_df.iterrows():
+            signal = Signal(
+                ticker=row['ticker'],
+                filing_date=pd.to_datetime(row['filing_date']),
+                trade_date=pd.to_datetime(row['trade_date']),
+                insider_name=row['insider_name'],
+                officer_title=row['officer_title'] or 'Unknown',
+                total_value=row['total_value'],
+                composite_score=row['composite_score'],
+                cluster_size=1
+            )
+            ticker_signals.append(signal)
+            all_signals.append(signal)
+
+        # Backtest this ticker across periods
+        ticker_row = {'Ticker': ticker, 'Signals': len(ticker_signals)}
+
+        for period in holding_periods:
+            label = period_labels[period]
+            result = engine.backtest_signals(ticker_signals, holding_days=period)
+
+            if result.total_trades > 0:
+                # Add benchmark comparison
+                result = engine.add_benchmark_comparison(result, DEFAULT_CONFIG['backtesting']['benchmark_ticker'])
+
+                ticker_row[f'{label}_gain'] = f"{result.avg_net_return:.2%}"
+                ticker_row[f'{label}_spy'] = f"{result.avg_spy_return:.2%}" if result.avg_spy_return is not None else "N/A"
+                ticker_row[f'{label}_alpha'] = f"{result.alpha:+.2%}" if result.alpha is not None else "N/A"
+            else:
+                ticker_row[f'{label}_gain'] = 'N/A'
+                ticker_row[f'{label}_spy'] = 'N/A'
+                ticker_row[f'{label}_alpha'] = 'N/A'
+
+        ticker_results.append(ticker_row)
+
+    # Calculate overall average performance
+    avg_performance = {}
+    for period in holding_periods:
+        label = period_labels[period]
+        result = engine.backtest_signals(all_signals, holding_days=period)
+
+        if result.total_trades > 0:
+            result = engine.add_benchmark_comparison(result, DEFAULT_CONFIG['backtesting']['benchmark_ticker'])
+            avg_performance[label] = {
+                'strategy': result.avg_net_return * 100,
+                'spy': result.avg_spy_return * 100 if result.avg_spy_return is not None else 0,
+                'alpha': result.alpha * 100 if result.alpha is not None else 0
+            }
+
+    ticker_df_results = pd.DataFrame(ticker_results)
+
+    # Run full backtest for additional metrics
+    all_periods = [1, 5, 21, 63, 126, 252]
+    all_results = engine.backtest_multiple_periods(all_signals, all_periods)
 
     # Add benchmark comparison
-    for period, result in results.items():
+    for period, result in all_results.items():
         if result.total_trades > 0:
-            results[period] = engine.add_benchmark_comparison(
+            all_results[period] = engine.add_benchmark_comparison(
                 result,
                 DEFAULT_CONFIG['backtesting']['benchmark_ticker']
             )
 
     # Calculate metrics
     calculator = MetricsCalculator(risk_free_rate=DEFAULT_CONFIG['backtesting']['risk_free_rate'])
-    metrics = {}
+    all_metrics = {}
 
-    for period, result in results.items():
+    for period, result in all_results.items():
         if result.total_trades > 0:
             returns = [t.net_return for t in result.trades]
-            metrics[period] = calculator.calculate_metrics(returns, period if period != -1 else 252)
+            all_metrics[period] = calculator.calculate_metrics(returns, period if period != -1 else 252)
         else:
-            metrics[period] = None
+            all_metrics[period] = None
 
-    return df_filtered, stats, results, metrics
+    return ticker_df_results, avg_performance, stats, all_results, all_metrics
 
 
 # Load initial data
 all_transactions_df = load_all_transactions()
+
+# Initialize result cache (parameters -> results)
+# Cache key: (min_trade_value, min_market_cap_pct, exec_levels_tuple, min_signal_score)
+result_cache = {}
 
 # Initialize app
 app = dash.Dash(
@@ -318,63 +370,195 @@ def create_parameter_controls():
     ], className="mb-4")
 
 
-def create_summary_cards(stats, result_21d):
-    """Create performance summary cards."""
-    if not result_21d or result_21d.total_trades == 0:
+def create_ticker_table(ticker_df):
+    """Create ticker-level results table."""
+    if ticker_df.empty:
         return dbc.Alert("No signals match current filters. Try relaxing parameters.", color="warning")
 
-    alpha_value = result_21d.alpha if result_21d.alpha is not None else 0
-    alpha_color = "success" if alpha_value > 0 else "danger" if alpha_value < 0 else "warning"
+    # Build conditional styling rules for color coding
+    style_conditions = [
+        # Ticker column - bold green, left aligned
+        {
+            'if': {'column_id': 'Ticker'},
+            'fontWeight': 'bold',
+            'color': '#00ff00',
+            'textAlign': 'left'
+        },
+        # Signals column - cyan
+        {
+            'if': {'column_id': 'Signals'},
+            'color': '#00ddff',
+            'fontWeight': 'bold'
+        }
+    ]
 
-    return dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Total Signals", className="text-muted"),
-                    html.H3(f"{stats['after_score_filter']}", className="text-info"),
-                    html.Small(f"{stats['after_score_filter']/stats['total_transactions']*100:.1f}% pass rate",
-                               className="text-muted")
-                ])
-            ])
-        ], width=3),
+    # Color code all gain columns (green/red based on positive/negative)
+    for period in ['1d', '1w', '1m', '1y']:
+        # Gain columns - red if negative, green otherwise (default positive)
+        style_conditions.extend([
+            {
+                'if': {
+                    'filter_query': f'{{{period}_gain}} contains "-"',
+                    'column_id': f'{period}_gain'
+                },
+                'color': '#ff4444',
+                'fontWeight': 'bold'
+            }
+        ])
+        # Green for non-N/A, non-negative (applied after red rule)
+        style_conditions.append({
+            'if': {'column_id': f'{period}_gain'},
+            'color': '#00ff00',
+            'fontWeight': 'bold'
+        })
 
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("Avg Return (21d)", className="text-muted"),
-                    html.H3(
-                        f"{result_21d.avg_net_return:.2%}",
-                        className="text-success" if result_21d.avg_net_return > 0 else "text-danger"
-                    ),
-                    html.Small(f"Win Rate: {result_21d.win_rate:.1%}", className="text-muted")
-                ])
-            ])
-        ], width=3),
+        # SPY columns - red if negative, green otherwise
+        style_conditions.extend([
+            {
+                'if': {
+                    'filter_query': f'{{{period}_spy}} contains "-"',
+                    'column_id': f'{period}_spy'
+                },
+                'color': '#ff4444'
+            }
+        ])
+        # Green for SPY (applied after red rule)
+        style_conditions.append({
+            'if': {'column_id': f'{period}_spy'},
+            'color': '#00ff00'
+        })
 
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("S&P 500 (21d)", className="text-muted"),
-                    html.H3(
-                        f"{result_21d.avg_spy_return:.2%}" if result_21d.avg_spy_return is not None else "N/A",
-                        className="text-info"
-                    )
-                ])
-            ])
-        ], width=3),
+        # Alpha columns - green if positive (+), red if negative (-), with highlight background
+        style_conditions.extend([
+            {
+                'if': {
+                    'filter_query': f'{{{period}_alpha}} contains "-"',
+                    'column_id': f'{period}_alpha'
+                },
+                'color': '#ff4444',
+                'fontWeight': 'bold',
+                'backgroundColor': '#3d1a1a'  # Dark red background
+            },
+            {
+                'if': {
+                    'filter_query': f'{{{period}_alpha}} contains "+"',
+                    'column_id': f'{period}_alpha'
+                },
+                'color': '#00ff00',
+                'fontWeight': 'bold',
+                'backgroundColor': '#1a3d1a'  # Dark green background
+            },
+            {
+                'if': {
+                    'filter_query': f'{{{period}_alpha}} = "N/A"',
+                    'column_id': f'{period}_alpha'
+                },
+                'backgroundColor': '#2d2d2d',  # Slightly different gray for N/A
+                'color': '#888888'
+            }
+        ])
 
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H6("🎯 Alpha (21d)", className="text-muted"),
-                    html.H3(
-                        f"{alpha_value:+.2%}",
-                        className=f"text-{alpha_color}"
-                    )
-                ])
-            ])
-        ], width=3),
+    return dbc.Card([
+        dbc.CardHeader(html.H4("📊 Ticker-Level Results")),
+        dbc.CardBody([
+            dash_table.DataTable(
+                data=ticker_df.to_dict('records'),
+                columns=[{'name': col, 'id': col} for col in ticker_df.columns],
+                style_table={'overflowX': 'auto'},
+                style_cell={
+                    'textAlign': 'center',
+                    'padding': '10px',
+                    'backgroundColor': '#303030',
+                    'color': 'white',
+                    'fontSize': '13px'
+                },
+                style_header={
+                    'backgroundColor': '#1e1e1e',
+                    'fontWeight': 'bold',
+                    'color': 'white',
+                    'fontSize': '14px'
+                },
+                style_data_conditional=style_conditions,
+                page_size=20,
+                sort_action='native',
+                filter_action='native'
+            )
+        ])
     ], className="mb-4")
+
+
+def create_comparison_charts(avg_perf):
+    """Create 4 comparison charts showing strategy vs S&P 500."""
+    if not avg_perf:
+        empty_fig = go.Figure()
+        empty_fig.update_layout(template='plotly_dark', title='No data')
+        return [empty_fig] * 4
+
+    periods = list(avg_perf.keys())
+    strategy_returns = [avg_perf[p]['strategy'] for p in periods]
+    spy_returns = [avg_perf[p]['spy'] for p in periods]
+    alphas = [avg_perf[p]['alpha'] for p in periods]
+
+    # Chart 1: Bar comparison of returns
+    fig1 = go.Figure()
+    fig1.add_trace(go.Bar(name='Strategy', x=periods, y=strategy_returns, marker_color='#00ff00'))
+    fig1.add_trace(go.Bar(name='S&P 500', x=periods, y=spy_returns, marker_color='#0066cc'))
+    fig1.update_layout(
+        template='plotly_dark',
+        title='Average Returns: Strategy vs S&P 500',
+        xaxis_title='Holding Period',
+        yaxis_title='Return (%)',
+        barmode='group',
+        height=350
+    )
+
+    # Chart 2: Alpha bars
+    fig2 = go.Figure()
+    fig2.add_trace(go.Bar(x=periods, y=alphas, marker_color='#ffaa00'))
+    fig2.update_layout(
+        template='plotly_dark',
+        title='Alpha vs S&P 500',
+        xaxis_title='Holding Period',
+        yaxis_title='Alpha (%)',
+        height=350
+    )
+
+    # Chart 3: Line comparison
+    fig3 = go.Figure()
+    fig3.add_trace(go.Scatter(
+        x=periods, y=strategy_returns, mode='lines+markers',
+        name='Strategy', line=dict(color='#00ff00', width=3), marker=dict(size=10)
+    ))
+    fig3.add_trace(go.Scatter(
+        x=periods, y=spy_returns, mode='lines+markers',
+        name='S&P 500', line=dict(color='#0066cc', width=3), marker=dict(size=10)
+    ))
+    fig3.update_layout(
+        template='plotly_dark',
+        title='Performance Trend Over Holding Periods',
+        xaxis_title='Holding Period',
+        yaxis_title='Return (%)',
+        height=350
+    )
+
+    # Chart 4: Waterfall of alpha contribution
+    fig4 = go.Figure()
+    fig4.add_trace(go.Waterfall(
+        x=periods,
+        y=alphas,
+        connector={"line": {"color": "rgb(63, 63, 63)"}},
+        increasing={"marker": {"color": "#00ff00"}},
+        decreasing={"marker": {"color": "#ff4444"}}
+    ))
+    fig4.update_layout(
+        template='plotly_dark',
+        title='Alpha Waterfall',
+        xaxis_title='Holding Period',
+        yaxis_title='Alpha (%)',
+        height=350
+    )
+
+    return [fig1, fig2, fig3, fig4]
 
 
 def create_performance_table(results, metrics):
@@ -732,25 +916,45 @@ app.layout = html.Div([
         dcc.Store(id='backtest-results-store'),
         dcc.Store(id='stats-store'),
 
+        # Progress indicator
+        html.Div(id='progress-container', children=[], className="mb-3"),
+
+        # Stores for multi-step processing
+        dcc.Store(id='processing-state', data={'step': 0, 'total_steps': 0, 'current_ticker': ''}),
+        dcc.Interval(id='progress-interval', interval=500, n_intervals=0, disabled=True),
+
         # Loading spinner
         dcc.Loading(
             id="loading",
             type="default",
             children=[
-                html.Div(id='summary-cards-container', children=[
+                # Ticker results table
+                html.Div(id='ticker-table-container', children=[
                     dbc.Alert([
                         html.H4("👋 Welcome!", className="alert-heading"),
-                        html.P("Adjust the parameters above and click 'Update Results' to see backtest performance."),
+                        html.P("Adjust the parameters above and click 'Update Results' to see ticker-level performance."),
                         html.Hr(),
                         html.P([
                             html.Strong("Tip: "),
-                            "Start with default settings, then experiment with lowering thresholds to see how it affects alpha."
+                            "Start with default settings, then experiment with thresholds to optimize alpha."
                         ], className="mb-0")
                     ], color="info")
-                ]),
-                html.Div(id='performance-table-container'),
-                html.Div(id='detailed-trades-container'),
-                html.Div(id='equity-curve-container')
+                ], className="mb-4"),
+
+                # Average comparison charts
+                dbc.Card([
+                    dbc.CardHeader(html.H4("📈 Average Performance: Strategy vs S&P 500")),
+                    dbc.CardBody([
+                        dbc.Row([
+                            dbc.Col([dcc.Graph(id='chart-1')], width=6),
+                            dbc.Col([dcc.Graph(id='chart-2')], width=6)
+                        ]),
+                        dbc.Row([
+                            dbc.Col([dcc.Graph(id='chart-3')], width=6),
+                            dbc.Col([dcc.Graph(id='chart-4')], width=6)
+                        ])
+                    ])
+                ], className="mb-4")
             ]
         )
     ], fluid=True)
@@ -761,10 +965,12 @@ app.layout = html.Div([
     [
         Output('backtest-results-store', 'data'),
         Output('stats-store', 'data'),
-        Output('summary-cards-container', 'children'),
-        Output('performance-table-container', 'children'),
-        Output('detailed-trades-container', 'children'),
-        Output('equity-curve-container', 'children')
+        Output('ticker-table-container', 'children'),
+        Output('chart-1', 'figure'),
+        Output('chart-2', 'figure'),
+        Output('chart-3', 'figure'),
+        Output('chart-4', 'figure'),
+        Output('progress-container', 'children')
     ],
     [
         Input('update-button', 'n_clicks'),
@@ -775,13 +981,80 @@ app.layout = html.Div([
         State('min-market-cap-pct-slider', 'value'),
         State('exec-level-checklist', 'value')
     ],
-    prevent_initial_call=True
+    prevent_initial_call=True,
+    running=[
+        (Output('update-button', 'disabled'), True, False),
+    ]
 )
 def update_dashboard(n_clicks, min_trade_value, min_signal_score, min_market_cap_pct, exec_levels):
     """Update dashboard with new backtest results based on parameters."""
 
+    import time
+    start_time = time.time()
+
+    # Create cache key from parameters
+    exec_levels_sorted = tuple(sorted(exec_levels or ['C-Suite']))
+    cache_key = (min_trade_value, min_market_cap_pct, exec_levels_sorted, min_signal_score)
+
+    # Check cache first
+    if cache_key in result_cache:
+        print("\n" + "="*80)
+        print("⚡ CACHE HIT - Returning cached results instantly!")
+        print("="*80)
+        print(f"Parameters: Trade≥${min_trade_value:,} | Score≥{min_signal_score} | Exec={exec_levels}")
+        print("="*80 + "\n")
+
+        cached_result = result_cache[cache_key]
+        ticker_df = cached_result['ticker_df']
+        avg_perf = cached_result['avg_perf']
+        stats = cached_result['stats']
+
+        # Create outputs from cache
+        ticker_table = create_ticker_table(ticker_df)
+        fig1, fig2, fig3, fig4 = create_comparison_charts(avg_perf)
+        results_data = {'has_results': not ticker_df.empty}
+
+        # Instant progress message
+        if not ticker_df.empty:
+            total_signals = stats.get('after_score_filter', len(ticker_df))
+            progress_msg = dbc.Alert([
+                html.H5(f"⚡ Loaded from Cache!", className="alert-heading mb-2"),
+                html.P([
+                    f"Displaying ",
+                    html.Strong(f"{total_signals} signals"),
+                    f" across ",
+                    html.Strong(f"{len(ticker_df)} tickers"),
+                    f" (instant retrieval)"
+                ], className="mb-0")
+            ],
+                color="info",
+                dismissable=True,
+                duration=4000
+            )
+        else:
+            progress_msg = dbc.Alert(
+                "⚠️ No signals found with current filters.",
+                color="warning",
+                dismissable=True
+            )
+
+        return results_data, stats, ticker_table, fig1, fig2, fig3, fig4, progress_msg
+
+    # Cache miss - compute results
+    print("\n" + "="*80)
+    print("🔄 DASHBOARD UPDATE STARTED")
+    print("="*80)
+    print(f"Parameters: Trade≥${min_trade_value:,} | Score≥{min_signal_score} | Exec={exec_levels}")
+
+    # Quick filter to estimate signal count
+    df_quick = all_transactions_df.copy()
+    df_quick = df_quick[df_quick['total_value'] >= min_trade_value]
+    print(f"📊 Estimated signals to process: ~{len(df_quick)} transactions")
+    print(f"⏱️  Estimated time: ~{len(df_quick)//2 * 2}-{len(df_quick)//2 * 3} seconds")
+    print("="*80 + "\n")
+
     # Apply filters and run backtest
-    filtered_df, stats, results, metrics = apply_filters_and_backtest(
+    ticker_df, avg_perf, stats, results, metrics = apply_filters_and_backtest(
         all_transactions_df,
         min_trade_value,
         min_market_cap_pct,
@@ -789,21 +1062,57 @@ def update_dashboard(n_clicks, min_trade_value, min_signal_score, min_market_cap
         min_signal_score
     )
 
-    # Get 21-day results for summary
-    result_21d = results.get(21)
+    # Store in cache
+    result_cache[cache_key] = {
+        'ticker_df': ticker_df,
+        'avg_perf': avg_perf,
+        'stats': stats
+    }
+    print(f"💾 Results cached for parameters: {cache_key}")
 
-    # Create components
-    summary = create_summary_cards(stats, result_21d)
-    summary_table = create_performance_table(results, metrics)
-    detailed_table = create_detailed_trades_table(results)
-    chart = dcc.Graph(figure=create_equity_curve(result_21d), config={'displayModeBar': True})
+    elapsed_time = time.time() - start_time
+
+    print("\n" + "="*80)
+    print(f"✅ DASHBOARD UPDATE COMPLETE - {elapsed_time:.1f} seconds")
+    print(f"📈 Found {len(ticker_df)} tickers with signals")
+    print("="*80 + "\n")
+
+    # Create ticker table
+    ticker_table = create_ticker_table(ticker_df)
+
+    # Create 4 comparison charts
+    fig1, fig2, fig3, fig4 = create_comparison_charts(avg_perf)
 
     # Store data (simplified - not storing full objects)
     results_data = {
-        'has_results': result_21d is not None and result_21d.total_trades > 0
+        'has_results': not ticker_df.empty
     }
 
-    return results_data, stats, summary, summary_table, detailed_table, chart
+    # Progress message (shows after completion)
+    if not ticker_df.empty:
+        total_signals = stats.get('after_score_filter', len(ticker_df))
+        progress_msg = dbc.Alert([
+            html.H5(f"✅ Backtest Complete!", className="alert-heading mb-2"),
+            html.P([
+                f"Analyzed ",
+                html.Strong(f"{total_signals} signals"),
+                f" across ",
+                html.Strong(f"{len(ticker_df)} tickers"),
+                f" in {elapsed_time:.1f} seconds"
+            ], className="mb-0")
+        ],
+            color="success",
+            dismissable=True,
+            duration=5000
+        )
+    else:
+        progress_msg = dbc.Alert(
+            "⚠️ No signals found with current filters. Try relaxing the parameters.",
+            color="warning",
+            dismissable=True
+        )
+
+    return results_data, stats, ticker_table, fig1, fig2, fig3, fig4, progress_msg
 
 
 def run_unified_dashboard(host='127.0.0.1', port=8052, debug=True):

@@ -111,7 +111,7 @@ scoring:
   combination_method: 'multiply'
 
   # Minimum score threshold for a signal to be actionable
-  # Lowered from 2.0 to 1.5 to capture more signals
+  # Balanced threshold to filter quality signals
   min_signal_score: 1.5
 
   # Top N signals to consider per time period
