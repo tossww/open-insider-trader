@@ -8,14 +8,19 @@ risk metrics, and statistical significance.
 import os
 from typing import Dict, List, Optional
 from dataclasses import dataclass
+from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
 from backtesting.metrics import RiskMetrics
 
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from config/.env
+config_env = Path(__file__).parent.parent.parent / 'config' / '.env'
+if config_env.exists():
+    load_dotenv(config_env)
+else:
+    load_dotenv()  # Fallback to default search
 
 
 @dataclass
