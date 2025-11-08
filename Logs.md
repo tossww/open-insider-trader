@@ -1,14 +1,15 @@
 # Project Logs
 
-## 2025-11-07 21:15 - Handoff: Enhanced Unified Dashboard Complete
+## 2025-11-07 22:30 - Handoff: Data Collection Extended with Limitations
 
-**Completed:** Enhanced unified dashboard with trade-by-trade analysis + parameter tuning
-**Committed:** 724bfc4
-**Files Added:** `unified_dashboard.py` (815 lines), `param_tuner.py`, launch scripts, `DASHBOARD_GUIDE.md`
-**Features:** All 6 periods (5D-2Y), trade-by-trade returns table, SPY benchmarks, alpha calc, average row
-**Validation:** Dashboard loads at :8052, backtests correctly, color-coding works
-**Next Focus:** Use dashboard to test parameter combinations, then 5-year data collection
+**Completed:** Extended data collection attempt, database audit, identified limitations
+**Database:** 13,053 transactions (up from 3,479), 3,596 purchases, 53 tickers, 2021-2025 coverage
+**Files Created:** `collect_full_5year_history.py`, `collect_missing_tickers.py`
+**Audit Results:** Comprehensive quality report via sub-agent - strong 2023-2025, gaps in 2020-2022
+**Issues Found:** Missing AMD/META/NVDA, SEC API 100-filing limit, parser method mismatches
+**Fixed:** Date typo (0025 → 2025)
+**Next Focus:** DECISION - Backtest with 4.5 years OR debug collection for full 5 years
 
 ---
 
-*Prior session logs archived to Archive/Logs/2025-11-07-unified-dashboard-session.md*
+*Prior session logs archived to Archive/Logs/2025-11-07-data-collection-session.md*
