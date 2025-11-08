@@ -80,7 +80,7 @@ filtering:
   max_market_cap_billions: null
   min_cluster_size: 1
   min_market_cap_pct: 0.0
-  min_trade_value: 100000
+  min_trade_value: 0
 market_cap_weight:
   baseline_pct: 1.0e-05
   log_multiplier: 0.5
