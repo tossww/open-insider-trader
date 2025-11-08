@@ -376,6 +376,7 @@ def create_ticker_table(ticker_df):
         return dbc.Alert("No signals match current filters. Try relaxing parameters.", color="warning")
 
     # Build conditional styling rules for color coding
+    # IMPORTANT: In Dash, rules are applied in order, and LATER rules override earlier ones
     style_conditions = [
         # Ticker column - bold green, left aligned
         {
@@ -394,69 +395,71 @@ def create_ticker_table(ticker_df):
 
     # Color code all gain columns (green/red based on positive/negative)
     for period in ['1d', '1w', '1m', '1y']:
-        # Gain columns - red if negative, green otherwise (default positive)
-        style_conditions.extend([
-            {
-                'if': {
-                    'filter_query': f'{{{period}_gain}} contains "-"',
-                    'column_id': f'{period}_gain'
-                },
-                'color': '#ff4444',
-                'fontWeight': 'bold'
-            }
-        ])
-        # Green for non-N/A, non-negative (applied after red rule)
+        # Gain columns - Base green first
         style_conditions.append({
             'if': {'column_id': f'{period}_gain'},
             'color': '#00ff00',
             'fontWeight': 'bold'
         })
+        # Then override red if negative (applied AFTER green, so it wins)
+        style_conditions.append({
+            'if': {
+                'filter_query': f'{{{period}_gain}} contains "-"',
+                'column_id': f'{period}_gain'
+            },
+            'color': '#ff4444',
+            'fontWeight': 'bold'
+        })
 
-        # SPY columns - red if negative, green otherwise
-        style_conditions.extend([
-            {
-                'if': {
-                    'filter_query': f'{{{period}_spy}} contains "-"',
-                    'column_id': f'{period}_spy'
-                },
-                'color': '#ff4444'
-            }
-        ])
-        # Green for SPY (applied after red rule)
+        # SPY columns - Base green first
         style_conditions.append({
             'if': {'column_id': f'{period}_spy'},
             'color': '#00ff00'
         })
+        # Then override red if negative (applied AFTER green, so it wins)
+        style_conditions.append({
+            'if': {
+                'filter_query': f'{{{period}_spy}} contains "-"',
+                'column_id': f'{period}_spy'
+            },
+            'color': '#ff4444'
+        })
 
-        # Alpha columns - green if positive (+), red if negative (-), with highlight background
-        style_conditions.extend([
-            {
-                'if': {
-                    'filter_query': f'{{{period}_alpha}} contains "-"',
-                    'column_id': f'{period}_alpha'
-                },
-                'color': '#ff4444',
-                'fontWeight': 'bold',
-                'backgroundColor': '#3d1a1a'  # Dark red background
+        # Alpha columns with highlighted backgrounds
+        # First, base background for all alpha columns
+        style_conditions.append({
+            'if': {'column_id': f'{period}_alpha'},
+            'fontWeight': 'bold'
+        })
+        # N/A case - gray background
+        style_conditions.append({
+            'if': {
+                'filter_query': f'{{{period}_alpha}} = "N/A"',
+                'column_id': f'{period}_alpha'
             },
-            {
-                'if': {
-                    'filter_query': f'{{{period}_alpha}} contains "+"',
-                    'column_id': f'{period}_alpha'
-                },
-                'color': '#00ff00',
-                'fontWeight': 'bold',
-                'backgroundColor': '#1a3d1a'  # Dark green background
+            'backgroundColor': '#2d2d2d',
+            'color': '#888888'
+        })
+        # Positive alpha - green text + green background (overrides N/A if it has +)
+        style_conditions.append({
+            'if': {
+                'filter_query': f'{{{period}_alpha}} contains "+"',
+                'column_id': f'{period}_alpha'
             },
-            {
-                'if': {
-                    'filter_query': f'{{{period}_alpha}} = "N/A"',
-                    'column_id': f'{period}_alpha'
-                },
-                'backgroundColor': '#2d2d2d',  # Slightly different gray for N/A
-                'color': '#888888'
-            }
-        ])
+            'color': '#00ff00',
+            'fontWeight': 'bold',
+            'backgroundColor': '#1a3d1a'  # Dark green background
+        })
+        # Negative alpha - red text + red background (overrides everything if it has -)
+        style_conditions.append({
+            'if': {
+                'filter_query': f'{{{period}_alpha}} contains "-"',
+                'column_id': f'{period}_alpha'
+            },
+            'color': '#ff4444',
+            'fontWeight': 'bold',
+            'backgroundColor': '#3d1a1a'  # Dark red background
+        })
 
     return dbc.Card([
         dbc.CardHeader(html.H4("📊 Ticker-Level Results")),
