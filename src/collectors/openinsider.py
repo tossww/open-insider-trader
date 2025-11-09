@@ -212,24 +212,27 @@ class OpenInsiderScraper:
             logger.warning(f"Ticker validation failed for {ticker}: {e}")
             return False
 
-    def fetch_latest_purchases(
+    def fetch_all_transactions(
         self,
         days_back: int = 30,
         min_value: float = 50000,
-        max_pages: int = 10
+        max_pages: int = 10,
+        include_sells: bool = True
     ) -> pd.DataFrame:
         """
-        Fetch latest insider purchases from OpenInsider.
+        Fetch latest insider transactions (buys and optionally sells) from OpenInsider.
 
         Args:
             days_back: How many days back to fetch
             min_value: Minimum transaction value to include
             max_pages: Maximum number of pages to fetch
+            include_sells: Whether to include sell transactions (default: True)
 
         Returns:
             DataFrame with transaction data
         """
-        logger.info(f"Fetching purchases from last {days_back} days (min value: ${min_value:,.0f})")
+        trade_types = "buys and sells" if include_sells else "purchases only"
+        logger.info(f"Fetching {trade_types} from last {days_back} days (min value: ${min_value:,.0f})")
 
         all_transactions = []
 
@@ -299,8 +302,12 @@ class OpenInsiderScraper:
                 if not data:
                     continue
 
-                # Filter: only purchases
-                if data['trade_type'] != 'P':
+                # Filter by transaction type
+                if not include_sells and data['trade_type'] != 'P':
+                    continue
+
+                # Only include P (purchase) and S (sale) transactions
+                if data['trade_type'] not in ['P', 'S']:
                     continue
 
                 # Filter: minimum value
@@ -331,6 +338,7 @@ class OpenInsiderScraper:
             if ticker in invalid_tickers:
                 return False
 
+            # Try to validate
             if self._validate_ticker(ticker):
                 validated_tickers.add(ticker)
                 return True
@@ -338,18 +346,41 @@ class OpenInsiderScraper:
                 invalid_tickers.add(ticker)
                 return False
 
-        df['ticker_valid'] = df['ticker'].apply(is_valid)
+        # Filter out invalid tickers
+        initial_count = len(df)
+        df = df[df['ticker'].apply(is_valid)]
 
-        invalid_count = (~df['ticker_valid']).sum()
-        if invalid_count > 0:
-            logger.warning(f"Removing {invalid_count} transactions with invalid tickers")
-            df = df[df['ticker_valid']]
-
-        df = df.drop(columns=['ticker_valid'])
-
-        logger.info(f"Final dataset: {len(df)} transactions")
+        removed = initial_count - len(df)
+        if removed > 0:
+            logger.warning(f"Removing {removed} transactions with invalid tickers")
 
         return df
+
+    def fetch_latest_purchases(
+        self,
+        days_back: int = 30,
+        min_value: float = 50000,
+        max_pages: int = 10
+    ) -> pd.DataFrame:
+        """
+        Fetch latest insider purchases from OpenInsider.
+
+        This is a convenience wrapper around fetch_all_transactions that only returns buys.
+
+        Args:
+            days_back: How many days back to fetch
+            min_value: Minimum transaction value to include
+            max_pages: Maximum number of pages to fetch
+
+        Returns:
+            DataFrame with transaction data
+        """
+        return self.fetch_all_transactions(
+            days_back=days_back,
+            min_value=min_value,
+            max_pages=max_pages,
+            include_sells=False
+        )
 
     def save_to_database(self, df: pd.DataFrame, session: Session) -> int:
         """
@@ -395,12 +426,20 @@ class OpenInsiderScraper:
                     session.add(insider)
                     session.flush()
 
+                # Map trade_type string to TransactionCode enum
+                trade_code = row['trade_type']
+                try:
+                    transaction_code = TransactionCode[trade_code]
+                except KeyError:
+                    logger.warning(f"Unknown transaction type '{trade_code}', skipping")
+                    continue
+
                 # Check if transaction already exists
                 existing = session.query(InsiderTransaction).filter_by(
                     insider_id=insider.id,
                     company_id=company.id,
                     trade_date=row['trade_date'],
-                    transaction_code=TransactionCode.P,
+                    transaction_code=transaction_code,
                     shares=row['shares']
                 ).first()
 
@@ -414,7 +453,7 @@ class OpenInsiderScraper:
                     company_id=company.id,
                     trade_date=row['trade_date'],
                     filing_date=row['filing_date'],
-                    transaction_code=TransactionCode.P,
+                    transaction_code=transaction_code,
                     shares=row['shares'],
                     price_per_share=row['price'],
                     total_value=row['value'],
