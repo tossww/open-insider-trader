@@ -1,0 +1,22 @@
+# Render deployment configuration
+services:
+  - type: web
+    name: open-insider-trader
+    env: docker
+    plan: starter
+    region: oregon
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: SENDGRID_API_KEY
+        sync: false  # Set in Render dashboard
+      - key: SUBSCRIBER_EMAILS
+        sync: false
+      - key: FROM_EMAIL
+        value: alerts@openinsidertrader.com
+      - key: BASE_URL
+        value: https://open-insider-trader.onrender.com
+      - key: ENABLE_SCHEDULER
+        value: "true"
+    healthCheckPath: /api/health

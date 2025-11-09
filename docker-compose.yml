@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_URL=sqlite:///./data/insider_trades.db
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - FROM_EMAIL=${FROM_EMAIL:-alerts@openinsidertrader.com}
+      - SUBSCRIBER_EMAILS=${SUBSCRIBER_EMAILS}
+      - BASE_URL=${BASE_URL:-http://localhost:3000}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
